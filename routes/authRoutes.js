@@ -8,5 +8,6 @@ router.post('/register', authController.register);
 
 /* #swagger.tags = ['Auth'] */
 router.post('/login', authController.login);
+router.post('/storefront', authController.storefront);
 
 module.exports = router;
