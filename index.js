@@ -31,9 +31,9 @@ const start = async () => {
     await ensureDatabase();
     await sequelize.authenticate();
     await sequelize.sync();
-    app.listen(PORT, () => {
-      console.log(`Rendiya API escuchando en http://localhost:${PORT}`);
-      console.log(`Swagger UI: http://localhost:${PORT}/api-docs`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Rendiya API escuchando en el puerto ${PORT}`);
+      console.log(`Swagger UI: /api-docs`);
     });
   } catch (error) {
     console.error('No se pudo iniciar el servidor:', error.message);
