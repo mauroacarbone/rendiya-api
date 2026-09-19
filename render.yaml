@@ -8,6 +8,8 @@ services:
     startCommand: npm start
     healthCheckPath: /
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: NODE_ENV
         value: production
       - key: DB_DIALECT
@@ -16,3 +18,5 @@ services:
         value: 8h
       - key: JWT_SECRET
         generateValue: true
+      - key: STOREFRONT_SECRET
+        value: rendiya-storefront-live
