@@ -1,5 +1,13 @@
-const { Reservation, User } = require('../models');
+const { Reservation, User, Venue } = require('../models');
 const { emitReservationChange } = require('../realtime');
+const { normalizeAddons } = require('../services/addons');
+const { slotRejection } = require('../services/availability');
+const { venueBySlugOrId } = require('../services/assignment');
+
+const reservationInclude = [
+  { model: User, as: 'user' },
+  { model: Venue, as: 'venue' },
+];
 
 const notify = (req, reservation) => {
   emitReservationChange(req.app.get('io'), reservation);
@@ -14,7 +22,7 @@ const getReservations = async (req, res) => {
 
     const reservations = await Reservation.findAll({
       where,
-      include: [{ model: User, as: 'user' }],
+      include: reservationInclude,
       order: [['date', 'ASC'], ['time_slot', 'ASC']],
     });
 
@@ -35,7 +43,7 @@ const getReservations = async (req, res) => {
 const getReservationById = async (req, res) => {
   try {
     const reservation = await Reservation.findByPk(req.params.id, {
-      include: [{ model: User, as: 'user' }],
+      include: reservationInclude,
     });
 
     if (!reservation) {
@@ -80,14 +88,37 @@ const createReservation = async (req, res) => {
       });
     }
 
+    const venue = await venueBySlugOrId(req.body.venue_slug ?? req.body.venueId);
+    if ((req.body.venue_slug ?? req.body.venueId) && !venue) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'La sede indicada no existe',
+      });
+    }
+
+    if (venue) {
+      const rejection = await slotRejection(venue, date, time_slot);
+      if (rejection) {
+        return res.status(409).json({ success: false, data: null, message: rejection });
+      }
+    }
+
+    const { addons, total: addonsTotal } = normalizeAddons(req.body.addons);
+    const amount = Number(req.body.amount);
+
     const reservation = await Reservation.create({
       date,
       time_slot,
       status: status || 'pending',
       userId: req.user.id,
+      venueId: venue ? venue.id : null,
+      addons,
+      amount: Number.isFinite(amount) && amount >= 0 ? amount : addonsTotal,
     });
 
     notify(req, reservation);
+    await reservation.reload({ include: reservationInclude });
 
     return res.status(201).json({
       success: true,
@@ -105,7 +136,7 @@ const createReservation = async (req, res) => {
 
 const updateReservation = async (req, res) => {
   try {
-    const reservation = await Reservation.findByPk(req.params.id);
+    const reservation = await Reservation.findByPk(req.params.id, { include: reservationInclude });
 
     if (!reservation) {
       return res.status(404).json({
@@ -124,13 +155,40 @@ const updateReservation = async (req, res) => {
     }
 
     const { date, time_slot, status } = req.body;
-    await reservation.update({
+    const venue = await venueBySlugOrId(req.body.venue_slug ?? req.body.venueId);
+    const amount = Number(req.body.amount);
+    const changes = {
       date: date ?? reservation.date,
       time_slot: time_slot ?? reservation.time_slot,
       status: status ?? reservation.status,
-    });
+    };
+
+    if (venue) {
+      changes.venueId = venue.id;
+    }
+    if (req.body.addons !== undefined) {
+      changes.addons = normalizeAddons(req.body.addons).addons;
+    }
+    if (Number.isFinite(amount) && amount >= 0) {
+      changes.amount = amount;
+    }
+
+    const target = venue || reservation.venue;
+    const movedSlot = changes.date !== reservation.date
+      || changes.time_slot !== reservation.time_slot
+      || (venue && venue.id !== reservation.venueId);
+
+    if (target && movedSlot) {
+      const rejection = await slotRejection(target, changes.date, changes.time_slot);
+      if (rejection) {
+        return res.status(409).json({ success: false, data: null, message: rejection });
+      }
+    }
+
+    await reservation.update(changes);
 
     notify(req, reservation);
+    await reservation.reload({ include: reservationInclude });
 
     return res.status(200).json({
       success: true,

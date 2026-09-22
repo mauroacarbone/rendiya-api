@@ -8,7 +8,9 @@ const { sequelize } = require('./models');
 const { ensureDatabase } = require('./config/database');
 const authRoutes = require('./routes/authRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
+const venueRoutes = require('./routes/venueRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
+const { bootstrap } = require('./bootstrap');
 const swaggerDocument = require('./swagger-output.json');
 const { attachRealtime } = require('./realtime');
 
@@ -39,6 +41,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/venues', venueRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
@@ -47,6 +50,7 @@ const start = async () => {
     await ensureDatabase();
     await sequelize.authenticate();
     await sequelize.sync();
+    await bootstrap();
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Rendiya API escuchando en el puerto ${PORT}`);
       console.log(`Swagger UI: /api-docs`);

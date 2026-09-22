@@ -43,6 +43,15 @@ function livePayload(reservation) {
     reservationId: row.id,
     status: row.status,
     updatedAt,
+    date: row.date || null,
+    time_slot: row.time_slot || null,
+    amount: row.amount === undefined || row.amount === null ? null : Number(row.amount),
+    addons: Array.isArray(row.addons) ? row.addons : [],
+    venue: row.venue
+      ? { slug: row.venue.slug, name: row.venue.name, address: row.venue.address }
+      : null,
+    assigned_vehicle: row.assigned_vehicle || null,
+    assigned_instructor: row.assigned_instructor || null,
   };
 }
 

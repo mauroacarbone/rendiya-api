@@ -1,6 +1,7 @@
 const crypto = require('crypto');
-const { Reservation } = require('../models');
+const { Reservation, Venue } = require('../models');
 const { emitReservationChange } = require('../realtime');
+const { assignForReservation } = require('../services/assignment');
 
 const APPROVED = new Set(['approved', 'accredited', 'paid', 'confirmed']);
 
@@ -37,12 +38,18 @@ function paymentDataId(req) {
 
 function verifyMercadoPagoSignature(req) {
   const secret = process.env.MP_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || '';
+  const storefrontSecret = process.env.STOREFRONT_SECRET || '';
   const signatureHeader = req.get('x-signature') || '';
   const requestId = req.get('x-request-id') || '';
   const token = req.get('x-webhook-secret')
     || req.query.token
     || req.query.secret
     || '';
+  const storefrontKey = req.get('x-storefront-key') || '';
+
+  if (storefrontSecret && storefrontKey && safeEqual(storefrontKey, storefrontSecret)) {
+    return true;
+  }
 
   if (!secret) {
     return process.env.NODE_ENV !== 'production';
@@ -127,7 +134,9 @@ async function handlePaymentNotification(req, res) {
       return res.status(200).json({ success: true, received: true });
     }
 
-    const reservation = await Reservation.findByPk(reservationId);
+    const reservation = await Reservation.findByPk(reservationId, {
+      include: [{ model: Venue, as: 'venue' }],
+    });
     if (!reservation) {
       return res.status(200).json({ success: true, received: true });
     }
@@ -136,12 +145,19 @@ async function handlePaymentNotification(req, res) {
       await reservation.update({ status: 'confirmed' });
     }
 
+    // Con el pago acreditado el turno ya es operativo: se le reserva un
+    // vehículo y un instructor de la sede para esa fecha y franja.
+    const assignment = await assignForReservation(reservation);
+
     emitReservationChange(req.app.get('io'), reservation);
     return res.status(200).json({
       success: true,
       data: {
         reservationId: reservation.id,
         status: reservation.status,
+        venue: reservation.venue ? reservation.venue.slug : null,
+        assigned_vehicle: assignment.assigned_vehicle,
+        assigned_instructor: assignment.assigned_instructor,
       },
     });
   } catch (error) {
