@@ -1,4 +1,9 @@
 const { Reservation, User } = require('../models');
+const { emitReservationChange } = require('../realtime');
+
+const notify = (req, reservation) => {
+  emitReservationChange(req.app.get('io'), reservation);
+};
 
 const canAccessReservation = (reqUser, reservation) =>
   reqUser.role === 'admin' || reservation.userId === reqUser.id;
@@ -82,6 +87,8 @@ const createReservation = async (req, res) => {
       userId: req.user.id,
     });
 
+    notify(req, reservation);
+
     return res.status(201).json({
       success: true,
       data: reservation,
@@ -123,6 +130,8 @@ const updateReservation = async (req, res) => {
       status: status ?? reservation.status,
     });
 
+    notify(req, reservation);
+
     return res.status(200).json({
       success: true,
       data: reservation,
@@ -157,7 +166,9 @@ const deleteReservation = async (req, res) => {
       });
     }
 
+    const snapshot = reservation.get({ plain: true });
     await reservation.destroy();
+    notify(req, { ...snapshot, status: 'cancelled' });
 
     return res.status(200).json({
       success: true,
