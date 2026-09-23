@@ -16,3 +16,8 @@ temp/
 *.temp
 .DS_Store
 Thumbs.db
+
+# Local IDE tooling
+.cursor/
+.cursorrules
+.cursorrrules*
